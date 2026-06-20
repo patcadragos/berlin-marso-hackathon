@@ -108,12 +108,13 @@ loader (`load_dp_rgb_color` or `load_dp_rgb_plain`).
 1. Edit `submission.yaml`: set `team:` and confirm `policy:` matches your winning encoder.
 2. Commit your checkpoint(s) to the fork:
    ```bash
-   !git add -f il/baselines/diffusion_policy/runs/warehouse_rgb_dp_color/checkpoints/best_eval_sort_accuracy.pt submission.yaml
+   !git add il/baselines/diffusion_policy/runs/warehouse_rgb_dp_color/checkpoints/best_eval_sort_accuracy.pt submission.yaml
    !git commit -m "Colour-aware DP submission"
    !git push
    ```
-   (checkpoints are gitignored — `-f` forces them in. If too large for git, host the .pt and
-   fetch it with a script the repo runs; the manifest just needs a path that exists after clone.)
+   (checkpoints are NOT gitignored by this repo, so a plain `git add` picks them up. If the
+   `.pt` exceeds GitHub's 100MB file limit, host it elsewhere and fetch it with a script the
+   repo runs; the manifest just needs a path that exists after clone.)
 3. **Verify a fresh clone runs** (Step 2's eval command on a clean checkout) — the judge does this.
 4. On Kaggle → **Writeups → New Writeup**: paste `MARSO_WRITEUP.md`, attach cover image + the
    YouTube video (≤3 min, script in `MARSO_VIDEO.md`), set Project Link = your fork URL, **Save → Submit**.

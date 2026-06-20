@@ -9,7 +9,7 @@
 # Weights: easy 0.2, medium 0.3, hard 0.5  ->  the points are on hard.
 # ─────────────────────────────────────────────────────────────────────────────
 
-team: "CHANGE-ME"
+team: "patcadragos"
 
 # Colour-aware loader — MUST match the encoder you trained with (resnet18_color).
 policy: warehouse_sort.il_policy:load_dp_rgb_color
