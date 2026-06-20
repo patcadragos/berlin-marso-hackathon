@@ -90,3 +90,69 @@ class ResNet18SpatialSoftmax(nn.Module):
         feat = self.trunk(image)
         kp = self.spatial_softmax(feat)
         return self.fc(kp)
+
+
+class ResNet18ColorKeypoints(nn.Module):
+    """ResNet18 trunk + colour-AWARE keypoints.
+
+    The plain ``SpatialSoftmax`` above outputs only keypoint *coordinates* (where activation
+    peaks are) — the soft-argmax throws away appearance, so the encoder is effectively
+    **colour-blind**. That is fatal for a *colour-routing* task: the policy can localise parcels
+    and bins but cannot tell the red bin from the blue bin — especially on **hard**, where the
+    bins swap sides between episodes, so a side cannot be memorised.
+
+    This encoder keeps both:
+      * **WHERE** — ``2*num_kp`` soft-argmax keypoint coordinates (as before).
+      * **WHAT**  — for every keypoint, the attention-weighted *appearance* (colour/texture)
+        readout from a compact feature map, plus a global avg/max colour descriptor.
+
+    Output dim is ``out_dim`` (drop-in replacement; same 256-d as the others), so the rest of the
+    Diffusion-Policy network is unchanged. Select it with ``--visual-encoder resnet18_color`` and
+    load it at eval with ``warehouse_sort.il_policy:load_dp_rgb_color``.
+    """
+
+    def __init__(self, in_channels=3, out_dim=256, num_kp=32, app_channels=16, pretrained=True):
+        super().__init__()
+        from torchvision.models import resnet18
+        try:
+            weights = "IMAGENET1K_V1" if pretrained else None
+            net = resnet18(weights=weights)
+        except Exception as e:                     # offline / no weights cache -> train from scratch
+            print(f"[lerobot_encoder] pretrained resnet18 unavailable ({e}); using random init",
+                  flush=True)
+            net = resnet18(weights=None)
+        if in_channels != 3:
+            net.conv1 = nn.Conv2d(in_channels, 64, 7, stride=2, padding=3, bias=False)
+        self.trunk = nn.Sequential(
+            net.conv1, net.bn1, net.relu, net.maxpool,
+            net.layer1, net.layer2, net.layer3,
+        )
+        _bn_to_gn(self.trunk)
+        feat_channels = 256
+        self.num_kp = num_kp
+        self.app_channels = app_channels
+        self.kp_conv = nn.Conv2d(feat_channels, num_kp, kernel_size=1)        # attention maps (where)
+        self.app_conv = nn.Sequential(nn.Conv2d(feat_channels, app_channels, 1), nn.ReLU())  # what/colour
+        feat_dim = 2 * num_kp + num_kp * app_channels + 2 * app_channels
+        self.fc = nn.Sequential(nn.Linear(feat_dim, out_dim), nn.ReLU())
+
+    def forward(self, image):                      # image: (B, C, H, W), float in [0, 1]
+        feat = self.trunk(image)                   # (B, 256, h, w)
+        b, c, h, w = feat.shape
+        attn = F.softmax(self.kp_conv(feat).reshape(b, self.num_kp, h * w), dim=-1)  # (B, K, hw)
+        ys, xs = torch.meshgrid(
+            torch.linspace(-1.0, 1.0, h, device=feat.device, dtype=feat.dtype),
+            torch.linspace(-1.0, 1.0, w, device=feat.device, dtype=feat.dtype),
+            indexing="ij",
+        )
+        xs = xs.reshape(1, 1, h * w)
+        ys = ys.reshape(1, 1, h * w)
+        exp_x = (attn * xs).sum(dim=-1)            # (B, K)
+        exp_y = (attn * ys).sum(dim=-1)            # (B, K)
+        app = self.app_conv(feat).reshape(b, self.app_channels, h * w)  # (B, A, hw)
+        # appearance at each keypoint = its attention-weighted colour/texture readout
+        kp_app = torch.einsum("bkn,ban->bka", attn, app).reshape(b, self.num_kp * self.app_channels)
+        g_avg = app.mean(dim=-1)                   # (B, A) global colour descriptor
+        g_max = app.max(dim=-1).values            # (B, A)
+        out = torch.cat([exp_x, exp_y, kp_app, g_avg, g_max], dim=-1)
+        return self.fc(out)

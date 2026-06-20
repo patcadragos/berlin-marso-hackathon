@@ -1,0 +1,33 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# SUBMISSION MANIFEST — the one file the judge reads. See SUBMISSION.md.
+#
+# Strategy: ONE colour-aware checkpoint, trained on the HARD demos (most parcels, bin-swaps,
+# widest jitter -> most general), evaluated on all three levels. The rgb observation has the same
+# shape at every difficulty, so a single checkpoint scores every level. If you train per-level
+# checkpoints, point each level at its own file instead.
+#
+# Weights: easy 0.2, medium 0.3, hard 0.5  ->  the points are on hard.
+# ─────────────────────────────────────────────────────────────────────────────
+
+team: "CHANGE-ME"
+
+# Colour-aware loader — MUST match the encoder you trained with (resnet18_color).
+policy: warehouse_sort.il_policy:load_dp_rgb_color
+
+levels:
+  easy:
+    checkpoint: il/baselines/diffusion_policy/runs/warehouse_rgb_dp_color/checkpoints/best_eval_sort_accuracy.pt
+  medium:
+    checkpoint: il/baselines/diffusion_policy/runs/warehouse_rgb_dp_color/checkpoints/best_eval_sort_accuracy.pt
+  hard:
+    checkpoint: il/baselines/diffusion_policy/runs/warehouse_rgb_dp_color/checkpoints/best_eval_sort_accuracy.pt
+
+# Per-level alternative (if you train separate checkpoints):
+#   easy:   { checkpoint: runs/easy/best_eval_sort_accuracy.pt }
+#   medium: { checkpoint: runs/medium/best_eval_sort_accuracy.pt }
+#   hard:   { checkpoint: runs/hard/best_eval_sort_accuracy.pt }
+#
+# You can also override the policy per level, e.g. plain-conv on one level:
+#   hard:
+#     policy: warehouse_sort.il_policy:load_dp_rgb_plain
+#     checkpoint: runs/hard_plain/best_eval_sort_accuracy.pt

@@ -93,6 +93,9 @@ class Args:
     """RGB encoder: "plain_conv" (vendored) or "resnet18" (ResNet18 + SpatialSoftmax keypoints)."""
     num_kp: int = 32
     """SpatialSoftmax keypoints (resnet18 encoder); 2*num_kp coords localise parcels+bins+gripper."""
+    aug_pad: int = 0
+    """Random-shift image augmentation pad in px (0 = off; ~4 helps generalise to the held-out
+    wider position randomisation). Training-only; colour-safe (translation, no hue change)."""
     # WarehouseSort scene knobs (so the eval env matches the demos). Defaults = easy.
     num_parcels: int = 2
     max_episode_steps: Optional[int] = None
@@ -117,6 +120,37 @@ class Args:
 
     # additional tags/configs for logging purposes to wandb and shared comparisons with other algorithms
     demo_type: Optional[str] = None
+
+
+class RandomShiftsAug(nn.Module):
+    """DrQ-v2 style random-translation image augmentation (replicate-pad then random crop via
+    grid_sample). Applied ONLY during training (encode_obs gates it on `not eval_mode`).
+
+    Colour-safe — it shifts pixels, never changes hue — so it improves robustness to the wider
+    parcel/bin position randomisation used in the held-out eval without harming colour routing.
+    Set the pad with `--aug-pad N` (0 disables; 4 is a safe default for 128px images).
+    """
+
+    def __init__(self, pad=4):
+        super().__init__()
+        self.pad = pad
+
+    def forward(self, x):                          # x: (N, C, H, W) float
+        n, c, h, w = x.size()
+        assert h == w, "RandomShiftsAug expects square images"
+        padding = tuple([self.pad] * 4)
+        x = F.pad(x, padding, "replicate")
+        eps = 1.0 / (h + 2 * self.pad)
+        arange = torch.linspace(-1.0 + eps, 1.0 - eps, h + 2 * self.pad,
+                                device=x.device, dtype=x.dtype)[:h]
+        arange = arange.unsqueeze(0).repeat(h, 1).unsqueeze(2)
+        base_grid = torch.cat([arange, arange.transpose(1, 0)], dim=2)
+        base_grid = base_grid.unsqueeze(0).repeat(n, 1, 1, 1)
+        shift = torch.randint(0, 2 * self.pad + 1, size=(n, 1, 1, 2),
+                              device=x.device, dtype=x.dtype)
+        shift *= 2.0 / (h + 2 * self.pad)
+        grid = base_grid + shift
+        return F.grid_sample(x, grid, padding_mode="zeros", align_corners=False)
 
 
 def reorder_keys(d, ref_dict):
@@ -283,6 +317,16 @@ class Agent(nn.Module):
             # (see lerobot_encoder). Best for spatial pick-and-place.
             from diffusion_policy.lerobot_encoder import ResNet18SpatialSoftmax
             self.visual_encoder = ResNet18SpatialSoftmax(
+                in_channels=total_visual_channels, out_dim=visual_feature_dim,
+                num_kp=getattr(args, "num_kp", 32),
+            )
+        elif enc == "resnet18_color":
+            # ResNet18 + colour-AWARE keypoints: keeps WHERE (keypoint coords) AND WHAT (colour
+            # readout at each keypoint + global colour descriptor). Plain SpatialSoftmax is
+            # colour-blind, which breaks colour-routing on hard (bins swap sides). See
+            # lerobot_encoder.ResNet18ColorKeypoints. Load via il_policy:load_dp_rgb_color.
+            from diffusion_policy.lerobot_encoder import ResNet18ColorKeypoints
+            self.visual_encoder = ResNet18ColorKeypoints(
                 in_channels=total_visual_channels, out_dim=visual_feature_dim,
                 num_kp=getattr(args, "num_kp", 32),
             )
@@ -543,6 +587,12 @@ if __name__ == "__main__":
     )
 
     agent = Agent(envs, args).to(device)
+
+    # Opt-in image augmentation (training only). encode_obs applies `self.aug` when not in eval
+    # mode; the EMA agent / eval path never see it, so eval behaviour is unchanged.
+    if getattr(args, "aug_pad", 0) and args.aug_pad > 0:
+        agent.aug = RandomShiftsAug(pad=args.aug_pad).to(device)
+        print(f"[train_rgbd] image augmentation ON: RandomShiftsAug(pad={args.aug_pad})", flush=True)
 
     optimizer = optim.AdamW(
         params=agent.parameters(), lr=args.lr, betas=(0.95, 0.999), weight_decay=1e-6

@@ -80,3 +80,36 @@ def load_dp_rgb(checkpoint, sample_obs, action_space, device,
     ckpt = torch.load(checkpoint, map_location=device, weights_only=False)
     agent.load_state_dict(ckpt.get("ema_agent", ckpt.get("agent")))
     return _DPRgbPolicy(agent, obs_horizon, device, num_inference_steps=num_inference_steps)
+
+
+# --------------------------------------------------------------------------- #
+# Colour-aware variant — trained with `--visual-encoder resnet18_color`.
+# The architecture (encoder) MUST match training, so this loader pins it. Everything else is
+# identical to load_dp_rgb. Point submission.yaml at this entrypoint when you train the colour
+# encoder (recommended for the colour-routing task — esp. hard, where bins swap sides).
+# `num_inference_steps` is eval-only; raising it (e.g. 16 -> 24) can sharpen actions for free.
+# --------------------------------------------------------------------------- #
+def load_dp_rgb_color(checkpoint, sample_obs, action_space, device,
+                      obs_horizon=2, act_horizon=8, pred_horizon=16,
+                      diffusion_step_embed_dim=64, unet_dims=(64, 128, 256), n_groups=8,
+                      num_inference_steps=16, num_kp=32):
+    return load_dp_rgb(
+        checkpoint, sample_obs, action_space, device,
+        obs_horizon=obs_horizon, act_horizon=act_horizon, pred_horizon=pred_horizon,
+        diffusion_step_embed_dim=diffusion_step_embed_dim, unet_dims=unet_dims, n_groups=n_groups,
+        num_inference_steps=num_inference_steps, visual_encoder="resnet18_color", num_kp=num_kp,
+    )
+
+
+# Plain-conv variant — trained with `--visual-encoder plain_conv` (the zero-new-code colour-aware
+# fallback: the flattened conv feature map keeps appearance/colour, unlike SpatialSoftmax).
+def load_dp_rgb_plain(checkpoint, sample_obs, action_space, device,
+                      obs_horizon=2, act_horizon=8, pred_horizon=16,
+                      diffusion_step_embed_dim=64, unet_dims=(64, 128, 256), n_groups=8,
+                      num_inference_steps=16):
+    return load_dp_rgb(
+        checkpoint, sample_obs, action_space, device,
+        obs_horizon=obs_horizon, act_horizon=act_horizon, pred_horizon=pred_horizon,
+        diffusion_step_embed_dim=diffusion_step_embed_dim, unet_dims=unet_dims, n_groups=n_groups,
+        num_inference_steps=num_inference_steps, visual_encoder="plain_conv",
+    )

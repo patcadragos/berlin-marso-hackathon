@@ -1,0 +1,31 @@
+# @package _global_
+# RGB Diffusion Policy with the COLOUR-AWARE encoder (resnet18_color) + random-shift image
+# augmentation. This is the recommended config for the colour-routing task: the stock resnet18
+# (SpatialSoftmax) encoder is colour-blind, which caps sort accuracy — especially on hard, where
+# the bins swap sides and a side cannot be memorised.
+#
+#   pixi run python il/train.py method=dp_rgb_color demo_dir=hard
+#
+# Eval/submit with the matching loader:
+#   policy=warehouse_sort.il_policy:load_dp_rgb_color
+baseline_dir: diffusion_policy
+script: train_rgbd.py
+demo_kind: rgb
+flags:
+  obs_mode: rgb
+  obs_camera: scene
+  visual_encoder: resnet18_color
+  num_kp: 32
+  aug_pad: 4                 # random-shift augmentation -> generalise to held-out positions
+  total_iters: 60000         # image policies are data-hungry; train longer than the 30k template
+  batch_size: 128
+  obs_horizon: 2
+  act_horizon: 8
+  pred_horizon: 16
+  num_eval_envs: 8           # more eval envs/episodes -> more reliable best-checkpoint selection
+  num_eval_episodes: 32
+  eval_freq: 5000
+  log_freq: 1000
+  save_freq: 10000
+  capture_video: true
+  exp_name: warehouse_rgb_dp_color
