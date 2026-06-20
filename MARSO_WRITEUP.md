@@ -50,16 +50,22 @@ must be efficient or it times out before placing them all.
 
 4. **Longer training (60k iters)** and **more denoising steps at eval (free quality)**.
 
-## Results & ablation
+## Results
 
 | Encoder | easy | medium | hard | final |
 |---|---|---|---|---|
-| resnet18 (baseline, colour-blind) | [..] | [..] | [..] | [..] |
-| plain_conv (colour-preserving) | [..] | [..] | [..] | [..] |
 | **resnet18_color (ours)** | **[..]** | **[..]** | **[..]** | **[..]** |
 
-Key finding: the colour-aware encoder's gain is **largest on hard** (the bin-swap level), exactly
-as the diagnosis predicts — evidence the bottleneck was perception, not control.
+> Optional, only if there's GPU time left: an ablation row for the stock `resnet18`
+> (colour-blind) and `plain_conv` encoders, trained the same way. The starter repo's own
+> template already documents the stock encoder as scoring ≈0 by design ("a runnable
+> template — it does not yet solve the task"), which is the premise this entry fixes; a
+> fresh ablation run strengthens the writeup but isn't required to submit.
+
+Expected pattern: the colour-aware encoder's gain should be **largest on hard** (the
+bin-swap level), exactly as the diagnosis predicts — evidence the bottleneck was
+perception, not control. Note in the writeup whether your numbers confirm or complicate
+this.
 
 ## What we'd try next
 
@@ -71,4 +77,5 @@ as the diagnosis predicts — evidence the bottleneck was perception, not contro
 
 Full commands in `MARSO_RUNBOOK.md`. In short:
 `pixi run python il/train.py method=dp_rgb_color demo_dir=hard`, then `eval.py` per level with
-`policy=warehouse_sort.il_policy:load_dp_rgb_color`. Repo (judge clones this): **<your fork URL>**.
+`policy=warehouse_sort.il_policy:load_dp_rgb_color`. Repo (judge clones this):
+**https://github.com/patcadragos/berlin-marso-hackathon**.
